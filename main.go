@@ -14,20 +14,6 @@ type Incoming struct {
 	Msg string `json:"msg"`
 }
 
-
-func test() func(w http.ResponseWriter, r *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		decoder := json.NewDecoder(r.Body)
-
-		var in Incoming
-		err := decoder.Decode(&in)
-		if err != nil {
-			log.Fatalln(err)
-		}
-
-		fmt.Println(in.Msg)
-	}
-}
   
 func main() {
 	srv := &http.Server{
@@ -49,6 +35,7 @@ func router() *web.Mux {
 
 	mux.Use(getCorsHandler())
 
+	mux.Get("/api/health", health())
 	mux.Post("/api/test", test())
 
 	//mux.Get("/api/test", Test())
@@ -77,4 +64,28 @@ func getCorsHandler() func(http.Handler) http.Handler {
 	})
 
 	return c.Handler
+}
+
+func health() func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("I'm alive")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Bloop"))
+		return
+	}
+}
+
+
+func test() func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		decoder := json.NewDecoder(r.Body)
+
+		var in Incoming
+		err := decoder.Decode(&in)
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		fmt.Println(in.Msg)
+	}
 }
