@@ -33,10 +33,14 @@ func main() {
 func router() *web.Mux {
 	mux := web.New()
 
+	// TODO: Append this later. For now, DO hosts BE under /api, so I'll skip it
+	//prefix := "/api"
+	prefix := ""
+
 	mux.Use(getCorsHandler())
 
-	mux.Get("/api/health", health())
-	mux.Post("/api/test", test())
+	mux.Get(prefix + "/health", health())
+	mux.Post(prefix + "/test", test())
 
 	//mux.Get("/api/test", Test())
 
@@ -56,7 +60,7 @@ func getCorsHandler() func(http.Handler) http.Handler {
 	"http://friendy.me", "https://friendy.me")
 
 	// Allow all for now
-	allowedOrigins = append(allowedOrigins, "*")
+	//allowedOrigins = append(allowedOrigins, "*")
 
 	c := cors.New(cors.Options{
 		AllowedOrigins:   allowedOrigins,
