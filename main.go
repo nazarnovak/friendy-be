@@ -55,6 +55,9 @@ func getCorsHandler() func(http.Handler) http.Handler {
 	allowedOrigins = append(allowedOrigins, "https://friendy-fe-kkrep.ondigitalocean.app",
 	"http://friendy.me", "https://friendy.me")
 
+	// Allow all for now
+	allowedOrigins = append(allowedOrigins, "*")
+
 	c := cors.New(cors.Options{
 		AllowedOrigins:   allowedOrigins,
 		AllowedHeaders:   []string{"Accept", "Authorization", "Cache-Control", "Content-Type", "Origin", "User-Agent", "Viewport", "X-Requested-With"},
