@@ -60,8 +60,13 @@ func getCorsHandler() func(http.Handler) http.Handler {
 	allowedOrigins := []string{}
 // TODO: Add mode dev + mode prod here to separate sites
 	allowedOrigins = append(allowedOrigins, "http://localhost:3000")
+
+	// Home IP
+	allowedOrigins = append(allowedOrigins, "http://78.82.194.129")
+
 	// External IP
-	// allowedOrigins = append(allowedOrigins, "http://84.219.232.19:3000")
+	allowedOrigins = append(allowedOrigins, "https://friendy-fe-kkrep.ondigitalocean.app",
+	"http://friendy.me", "https://friendy.me")
 
 	c := cors.New(cors.Options{
 		AllowedOrigins:   allowedOrigins,
