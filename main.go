@@ -1,21 +1,34 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-
+	
 	"github.com/rs/cors"
 	"github.com/zenazn/goji/web"
+
+	_ "github.com/GoogleCloudPlatform/cloudsql-proxy/proxy/dialers/postgres"
 )
+
+var dbInstance *sql.DB
 
 type Incoming struct {
 	Msg string `json:"msg"`
 }
 
-  
+// TODO:
+// 1. Change GoogleCloudPlatform postgres driver to something else, cus it's Digital Ocean now. Duh
+// 
+
 func main() {
+	if err := InitDB(); err != nil {
+		log.Fatalln(fmt.Sprintf("Error initializing DB: %s", err.Error()))
+	}
+
 	srv := &http.Server{
 		Addr:    ":8080",
 		Handler: router(),
@@ -94,5 +107,43 @@ func test() func(w http.ResponseWriter, r *http.Request) {
 		}
 
 		fmt.Println(in.Msg)
+		fmt.Println("Inserting record very slowly...")
+
+		var id int64
+		q := `INSERT INTO feedback(id, message, email) VALUES(DEFAULT, $1, 'test@friendy.me') returning id;`
+		if err := dbInstance.QueryRowContext(context.Background(), q, in.Msg).Scan(&id); err != nil {
+			log.Fatalln("Error inserting record: %s", err.Error())
+			return
+		}
+
+		fmt.Println("Inserted new record. ID:", id)
 	}
+}
+
+func InitDB() error {
+	// connectionString := "postgres://nazarnovak@localhost/friendy?sslmode=disable"
+	connectionString := "postgresql://friendy:AVNS_LQ-aLzuy6Rrnrh-w9Cr@app-9b093242-2b97-42ae-b8fc-f684131dfcd5-do-user-13379982-0.b.db.ondigitalocean.com:25060/friendy?sslmode=require"
+	driver := "postgres"
+
+	// if !isDev {
+	// 	connectionString = cnfDB.ConnectionProd
+	// 	driver = "cloudsqlpostgres"
+	// }
+
+	db, err := sql.Open(driver, connectionString)
+	if err != nil {
+		return err
+	}
+	//defer db.Close()
+
+	if err := db.Ping(); err != nil {
+		return err
+	}
+
+	dbInstance = db
+
+	// Supress the "ephemeral certificate for instance hobeechat:europe-west6:myinstance3 will expire soon, refreshing now."
+	//logging.LogVerboseToNowhere()
+
+	return nil
 }
