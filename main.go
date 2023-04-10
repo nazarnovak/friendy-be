@@ -7,12 +7,16 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/rs/cors"
 	"github.com/zenazn/goji/web"
 
 	"github.com/gorilla/websocket"
+
+	stripe "github.com/stripe/stripe-go/v74"
+	paymentintent "github.com/stripe/stripe-go/v74/paymentintent"
 
 	_ "github.com/GoogleCloudPlatform/cloudsql-proxy/proxy/dialers/postgres"
 )
@@ -28,13 +32,18 @@ type Incoming struct {
 //
 
 func main() {
+	stripeApiKey := os.Getenv("STRIPE_SECRET_KEY")
+	if stripeApiKey == "" {
+		log.Fatalln(fmt.Sprintf("Stripe secret key not set"))
+	}
+
 	if err := InitDB(); err != nil {
 		log.Fatalln(fmt.Sprintf("Error initializing DB: %s", err.Error()))
 	}
 
 	srv := &http.Server{
 		Addr:    ":8080",
-		Handler: router(),
+		Handler: router(stripeApiKey),
 	}
 
 	fmt.Println("Running on port :8080")
@@ -45,7 +54,7 @@ func main() {
 	}
 }
 
-func router() *web.Mux {
+func router(stripeApiKey string) *web.Mux {
 	mux := web.New()
 
 	// TODO: Append this later. For now, DO hosts BE under /api, so I'll skip it
@@ -55,6 +64,7 @@ func router() *web.Mux {
 	mux.Use(getCorsHandler())
 
 	mux.Get(prefix+"/health", health())
+	mux.Get(prefix+"/stripe", stripeSecret(stripeApiKey))
 	mux.Post(prefix+"/test", test())
 	mux.Get(prefix+"/ws", ws())
 
@@ -94,7 +104,63 @@ func health() func(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("I'm alive")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Bloop"))
-		return
+	}
+}
+
+type StripeResponse struct {
+	ClientSecret string `json:"clientSecret"`
+}
+
+type HTTPError struct {
+	ErrorMessage string `json:"errorMessage"`
+}
+
+func stripeSecret(stripeApiKey string) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// curl https://api.stripe.com/v1/payment_intents -d amount=100 -d currency=eur
+		// -d "payment_method_types[]"=card -u <sk_> -d "capture_method"=manual
+
+		stripe.Key = stripeApiKey
+
+		params := &stripe.PaymentIntentParams{
+			Amount:             stripe.Int64(100),
+			Currency:           stripe.String(string(stripe.CurrencyEUR)),
+			PaymentMethodTypes: []*string{stripe.String(string(stripe.PaymentMethodTypeCard))},
+			CaptureMethod:      stripe.String(string(stripe.PaymentIntentCaptureMethodManual)),
+		}
+
+		result, err := paymentintent.New(params)
+		if err != nil {
+			fmt.Println("Error getting a payment intent")
+			he := HTTPError{
+				ErrorMessage: err.Error(),
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(he)
+			return
+		}
+
+		if result.ClientSecret == "" {
+			fmt.Println("Missing response client secret")
+			he := HTTPError{
+				ErrorMessage: "Missing response client secret",
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(he)
+			return
+		}
+
+		sr := StripeResponse{
+			ClientSecret: result.ClientSecret,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(sr)
 	}
 }
 
