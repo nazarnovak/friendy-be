@@ -88,8 +88,12 @@ func router(stripeApiKey string) *web.Mux {
 	mux.Use(getCorsHandler())
 
 	mux.Get(prefix+"/health", health())
+
 	mux.Get(prefix+"/stripe", stripeSecret(stripeApiKey))
 	mux.Post(prefix+"/track", track())
+
+	mux.Post(prefix+"/sign-up", signUp())
+
 	mux.Post(prefix+"/test", test())
 	mux.Get(prefix+"/ws", ws())
 
@@ -132,6 +136,28 @@ func health() func(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+type SignUpRequest struct {
+	Email string `json:"email"`
+	Pass string `json:"pass"`
+}
+
+func signUp() func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		decoder := json.NewDecoder(r.Body)
+
+		var sur SignUpRequest
+		err := decoder.Decode(&sur)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		fmt.Println(sur)
+		// 1. Do DB check if duplicate
+		// 2. Save
+	}
+}
+
 type StripeResponse struct {
 	ClientSecret string `json:"clientSecret"`
 }
@@ -164,13 +190,16 @@ func track() func(w http.ResponseWriter, r *http.Request) {
 		// 		"from": "email@email.com",
 		// 	},
 		// }
-		err = mixpanelClient.Track("id", eventMsg, &mixpanel.Event{
+		userID := "16"
+		err = mixpanelClient.Track(userID, eventMsg, &mixpanel.Event{
 			Properties: map[string]interface{}{},
 		})
+
 		if err != nil {
 			fmt.Println("Failed to send event to Mixpanel:", err)
 			return
 		}
+		fmt.Println(userID, eventMsg)
 	}
 }
 
