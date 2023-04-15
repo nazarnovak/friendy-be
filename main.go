@@ -18,24 +18,48 @@ import (
 	stripe "github.com/stripe/stripe-go/v74"
 	paymentintent "github.com/stripe/stripe-go/v74/paymentintent"
 
+	"github.com/dukex/mixpanel"
+
 	_ "github.com/GoogleCloudPlatform/cloudsql-proxy/proxy/dialers/postgres"
 )
 
 var dbInstance *sql.DB
 
+var mixpanelClient mixpanel.Mixpanel
+
+var trackCodeToMessage = map[int]string{
+	1: "1.Landing",
+	2: "2.Sign up",
+	3: "3.Payment",
+	4: "4.Payment attempt",
+	5: "5.Welcome",
+	6: "6.Profile",
+	7: "7.Your values",
+	8: "8.Friend values",
+	9: "9.Searching",
+	10: "10.Chat",
+}
+
+type TrackRequest struct {
+	Event int `json:"event"`
+}
+
 type Incoming struct {
 	Msg string `json:"msg"`
 }
-
-// TODO:
-// 1. Change GoogleCloudPlatform postgres driver to something else, cus it's Digital Ocean now. Duh
-//
 
 func main() {
 	stripeApiKey := os.Getenv("STRIPE_SECRET_KEY")
 	if stripeApiKey == "" {
 		log.Fatalln(fmt.Sprintf("Stripe secret key not set"))
 	}
+
+	mixpanelProjectToken := os.Getenv("MIXPANEL_PROJECT_TOKEN")
+	if mixpanelProjectToken == "" {
+		log.Fatalln(fmt.Sprintf("Mixpanel project token not set"))
+	}
+
+	mixpanelClient = mixpanel.New(mixpanelProjectToken, "")
 
 	if err := InitDB(); err != nil {
 		log.Fatalln(fmt.Sprintf("Error initializing DB: %s", err.Error()))
@@ -65,6 +89,7 @@ func router(stripeApiKey string) *web.Mux {
 
 	mux.Get(prefix+"/health", health())
 	mux.Get(prefix+"/stripe", stripeSecret(stripeApiKey))
+	mux.Post(prefix+"/track", track())
 	mux.Post(prefix+"/test", test())
 	mux.Get(prefix+"/ws", ws())
 
@@ -113,6 +138,40 @@ type StripeResponse struct {
 
 type HTTPError struct {
 	ErrorMessage string `json:"errorMessage"`
+}
+
+func track() func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		decoder := json.NewDecoder(r.Body)
+
+		var tr TrackRequest
+		err := decoder.Decode(&tr)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
+		eventMsg, ok := trackCodeToMessage[tr.Event]
+		if !ok {
+			fmt.Println("Failed to find event with number:", tr.Event)
+			return
+		}
+
+		// TODO: id will be cookie or something identifiable here
+		// Can also include properties as last parameter
+		// &mixpanel.Event{
+		// 	Properties: map[string]interface{}{
+		// 		"from": "email@email.com",
+		// 	},
+		// }
+		err = mixpanelClient.Track("id", eventMsg, &mixpanel.Event{
+			Properties: map[string]interface{}{},
+		})
+		if err != nil {
+			fmt.Println("Failed to send event to Mixpanel:", err)
+			return
+		}
+	}
 }
 
 func stripeSecret(stripeApiKey string) func(w http.ResponseWriter, r *http.Request) {
